@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+dashmap = "6.1.0"
 image = "=0.23.14"
+indicatif = { version = "0.18.0", features = ["rayon"] }
 ndarray = "=0.14.0"
 ndarray-image = "0.3.0"
+rand = "0.9.1"
 rayon = "1.10.0"
