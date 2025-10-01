@@ -1,12 +1,15 @@
 pub mod io;
 
-use super::compression::*;
+mod compression;
+
+use crate::prelude::*;
+use compression::find_mappings;
 use ndarray::prelude::*;
 
 pub fn compress(img: Arr<f32>, params: NaiveCompressionSettings) -> Mappings {
     assert!(params.domain_block_size > params.range_block_size && params.range_block_size > 0);
-    assert!(img.dim().0 % params.range_block_size == 0);
-    assert!(img.dim().1 % params.range_block_size == 0);
+    assert_eq!(img.dim().0 % params.range_block_size, 0);
+    assert_eq!(img.dim().1 % params.range_block_size, 0);
 
     let mut range_blocks = vec![];
 

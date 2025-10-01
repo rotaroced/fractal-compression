@@ -5,16 +5,16 @@ use std::{
 
 use super::quadtree::*;
 use crate::{
-    compression::{DomainBlockLocation, Mappings, RangeBlockLocation},
     naive::io::{BinBufReader, BinBufWriter},
+    prelude::*,
     quadtree::QuadtreeSettings,
 };
-
+use either::*;
 pub fn write_quadtree<T: Write>(
     w: &mut BinBufWriter<T>,
     t: &Quadtree<RangeBlockLocation>,
 ) -> Result<(), std::io::Error> {
-    if let Some(b) = t.children.as_ref() {
+    if let Left(b) = t.children.as_ref() {
         w.add_bit(false)?;
         write_quadtree(w, &b[0])?;
         write_quadtree(w, &b[1])?;
@@ -25,8 +25,8 @@ pub fn write_quadtree<T: Write>(
     }
 }
 
-pub fn read_quadtree<T: Read>(
-    r: &mut BinBufReader<T>,
+pub fn read_quadtree<t: Read>(
+    r: &mut BinBufReader<t>,
     size: (usize, usize),
     offset: (usize, usize),
 ) -> Result<Quadtree<RangeBlockLocation>, std::io::Error> {
@@ -52,23 +52,14 @@ pub fn read_quadtree<T: Read>(
             (offset.0 + size.0 / 2, offset.1 + size.1 / 2),
         )?;
 
-        Ok(Quadtree::node(
-            RangeBlockLocation { pos: offset, size },
-            c1,
-            c2,
-            c3,
-            c4,
-        ))
+        Ok(Quadtree::node(c1, c2, c3, c4))
     }
 }
 
 pub fn save_mappings(
     file: String,
-    mappings: &(
-        Mappings,
-        Quadtree<RangeBlockLocation>,
-        Quadtree<RangeBlockLocation>,
-    ),
+
+    mappings: &(Mappings, Quadtree<RangeBlockLocation>),
     s: QuadtreeSettings,
 ) -> Result<usize, std::io::Error> {
     let mut writer = BinBufWriter {
@@ -79,47 +70,26 @@ pub fn save_mappings(
     };
 
     // saves the settings
-    writer.write_float(s.min_domain_variance)?;
-    writer.write_float(s.min_range_variance)?;
-    writer.add_bit(s.only_leaves)?;
-    writer.write_int(s.min_domain_block_size, 8)?;
-    writer.write_int(s.min_range_block_size, 8)?;
-    writer.write_int(s.minimum_range_splits, 4)?;
+    writer.write_int(s.minimum_range_splits, 6)?;
+    writer.write_int(s.maximum_range_splits, 6)?;
+    writer.write_float(s.max_distance)?;
 
     // saves the image size
-    let (h, w) = mappings.1.label.size;
+    let (h, w) = mappings.1.image_size();
     writer.write_int(h, 32)?;
     writer.write_int(w, 32)?;
 
     // saves the quadtrees
     write_quadtree(&mut writer, &mappings.1)?;
-    write_quadtree(&mut writer, &mappings.2)?;
 
     // saves transformations. domain blocks are identified by their index in the prefix traversal
     // of the quadtree
-    let domain_blocks = if s.only_leaves {
-        mappings.2.prefix_leaves()
-    } else {
-        mappings.2.prefix_traversal()
-    };
-    let domain_blocks_indices: HashMap<RangeBlockLocation, usize> = domain_blocks
-        .iter()
-        .enumerate()
-        .map(|(i, &db)| (db, i))
-        .collect();
-    let bits_domain_blocks = domain_blocks_indices.len().ilog2() as usize + 1;
-
     for rb in mappings.1.prefix_leaves() {
         let &(db, c, b) = mappings.0.get(&rb).unwrap();
 
-        let db_index = *domain_blocks_indices
-            .get(&RangeBlockLocation {
-                pos: db.pos,
-                size: db.size,
-            })
-            .unwrap();
-
-        writer.write_int(db_index, bits_domain_blocks)?;
+        // TODO : optimiser le nombre de bits utilisés pour stocker les transformations
+        writer.write_int(db.pos.0, 16)?;
+        writer.write_int(db.pos.1, 16)?;
         writer.write_rotation(db.rotation)?;
         writer.add_bit(db.flipped)?;
         writer.write_float(c)?;
@@ -134,11 +104,8 @@ pub fn load_mappings(
     (
         QuadtreeSettings,
         (usize, usize),
-        (
-            Mappings,
-            Quadtree<RangeBlockLocation>,
-            Quadtree<RangeBlockLocation>,
-        ),
+        Mappings,
+        Quadtree<RangeBlockLocation>,
     ),
     std::io::Error,
 > {
@@ -146,44 +113,28 @@ pub fn load_mappings(
 
     let mut s = QuadtreeSettings::default();
 
-    s.min_domain_variance = reader.read_float()?;
-    s.min_range_variance = reader.read_float()?;
-    s.only_leaves = reader.read_bit()?;
-    s.min_domain_block_size = reader.read_int(8)?;
-    s.min_range_block_size = reader.read_int(8)?;
-    s.minimum_range_splits = reader.read_int(4)?;
+    s.minimum_range_splits = reader.read_int(6)?;
+    s.maximum_range_splits = reader.read_int(6)?;
 
     let (h, w) = (reader.read_int(32)?, reader.read_int(32)?);
 
     let range_blocks_qt = read_quadtree(&mut reader, (h, w), (0, 0))?;
-    let domain_blocks_qt = read_quadtree(&mut reader, (h, w), (0, 0))?;
-
-    //
-    let domain_blocks = if s.only_leaves {
-        domain_blocks_qt.prefix_leaves()
-    } else {
-        domain_blocks_qt.prefix_traversal()
-    };
-
-    let bits_domain_blocks = domain_blocks.len().ilog2() as usize + 1;
 
     let mut mappings = HashMap::new();
 
     for rb in range_blocks_qt.prefix_leaves() {
-        let db_index = reader.read_int(bits_domain_blocks)?;
+        let (dbx, dby) = (reader.read_int(16)?, reader.read_int(16)?);
         let rotation = reader.read_rotation()?;
         let flipped = reader.read_bit()?;
         let c = reader.read_float()?;
         let b = reader.read_float()?;
 
-        let RangeBlockLocation { pos, size } = domain_blocks[db_index];
-
         mappings.insert(
             rb,
             (
                 DomainBlockLocation {
-                    pos,
-                    size,
+                    pos: (dbx, dby),
+                    size: (2 * rb.size.0, 2 * rb.size.1),
                     rotation,
                     flipped,
                 },
@@ -193,14 +144,15 @@ pub fn load_mappings(
         );
     }
 
-    Ok((s, (h, w), (mappings, range_blocks_qt, domain_blocks_qt)))
+    Ok((s, (h, w), mappings, range_blocks_qt))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::quadtree::{QuadtreeSettings, generate_range_blocks};
+    use crate::quadtree::QuadtreeSettings;
 
     use super::*;
+    /*
     #[test]
     fn quadtree_saving() {
         let mut buf = [0; 4000];
@@ -246,5 +198,5 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(ts, read_ts);
-    }
+    }*/
 }

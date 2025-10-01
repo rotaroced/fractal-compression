@@ -1,13 +1,22 @@
 mod color;
-mod compression;
+mod decompression;
 mod naive;
+mod prelude;
 mod quadtree;
+mod smoothen;
 
+use crate::decompression::reconstruct;
+use crate::quadtree::compress;
+use crate::smoothen::blur_bottom;
+use crate::smoothen::blur_side;
 use color::*;
 use ndarray::*;
 use ndarray_image::*;
+pub use prelude::*;
 
-use crate::compression::*;
+use crate::quadtree::QuadtreeSettings;
+use crate::quadtree::io::*;
+/*
 use crate::naive::NaiveCompressionSettings;
 use crate::quadtree::*;
 
@@ -64,50 +73,90 @@ fn decompress_grey(
         }
     }
 }
-
+*/
 fn main() -> Result<(), std::io::Error> {
-    let s_lumi = QuadtreeSettings {
-        min_domain_variance: 0.002,
-        min_range_variance: 0.000001,
-        min_domain_block_size: 9,
-        min_range_block_size: 4,
-        only_leaves: true,
-        minimum_range_splits: 5,
-    };
-    let s_chro = QuadtreeSettings {
-        min_domain_variance: (0.008f32).powi(2),
-        min_range_variance: (0.006f32).powi(2),
-        min_domain_block_size: 9,
-        min_range_block_size: 4,
-        only_leaves: false,
-        minimum_range_splits: 3,
+    let s = QuadtreeSettings {
+        max_distance: 0.01,
+        maximum_range_splits: 7,
+        minimum_range_splits: 1,
     };
 
-    let img_u8 = open_image("joli.bmp", Colors::Rgb).unwrap();
-    let img = Array3::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.);
+    let img_u8 = open_gray_image("capybara_orange.png").unwrap();
+    let img = Array2::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.);
 
-    let (h, w, _) = img.clone().dim();
-    let size = (h / 3, w / 3);
+    let size = img.dim();
 
-    let (mut y, mut cr, mut cb) = rgb_to_y_cb_cr(img.clone());
+    let (m, q) = compress(&img, s);
 
-    y = scale_down(&y, size);
-    cr = scale_down(&cr, size);
-    cb = scale_down(&cb, size);
+    println!("{:?}", m);
 
-    compress_grey(y, CompressionMethod::Quadtree(s_lumi), "y.map".into()).unwrap();
-    compress_grey(cr, CompressionMethod::Quadtree(s_chro), "cr.map".into()).unwrap();
-    compress_grey(cb, CompressionMethod::Quadtree(s_chro), "cb.map".into()).unwrap();
+    save_mappings("capybara.map".into(), &(m.clone(), q), s).unwrap();
 
-    let comp_y = decompress_grey("y.map".into(), DecompressionMethod::Quadtree, 30).unwrap();
-    let comp_cr = decompress_grey("cr.map".into(), DecompressionMethod::Quadtree, 30).unwrap();
-    let comp_cb = decompress_grey("cb.map".into(), DecompressionMethod::Quadtree, 30).unwrap();
+    let mut r = decompression::reconstruct(m.clone(), img.clone(), 45);
+    println!("rms sharp: {}", distance(r.view(), img.view()));
+    let r_u81 = Array2::from_shape_fn(r.dim(), |t| (r[t] * 255.) as u8);
+    save_gray_image("lena_decompressed_qt_sharp.png", r_u81.view()).unwrap();
+    blur_bottom(&mut r, m.keys().into_iter().map(|&x| x));
+    blur_side(&mut r, m.keys().into_iter().map(|&x| x));
+    let r_u82 = Array2::from_shape_fn(r.dim(), |t| (r[t] * 255.) as u8);
 
-    let comp_img = y_cb_cr_to_rgb(comp_y, comp_cb, comp_cr);
-    let comp_img_u8 = Array3::from_shape_fn((size.0, size.1, 3), |t| {
-        (comp_img[t] * 255.).clamp(0., 255.) as i32 as u8
-    });
-    save_image("joli_col_decomp.png", comp_img_u8.view(), Colors::Rgb).unwrap();
+    println!("rms smooth: {}", distance(r.view(), img.view()));
+    save_gray_image("lena_decompressed_qt.png", r_u82.view()).unwrap();
+    /*let s_lumi = QuadtreeSettings {
+            min_domain_variance: 0.002,
+            min_range_variance: 0.000001,
+            min_domain_block_size: 9,
+            min_range_block_size: 4,
+            only_leaves: true,
+            minimum_range_splits: 5,
+        };
+        let s_chro = QuadtreeSettings {
+            min_domain_variance: (0.008f32).powi(2),
+            min_range_variance: (0.006f32).powi(2),
+            min_domain_block_size: 9,
+            min_range_block_size: 4,
+            only_leaves: false,
+            minimum_range_splits: 3,
+        };
 
+        let s = NaiveCompressionSettings {
+            range_block_size: 4,
+            domain_block_size: 8,
+            domain_block_stepx: 8,
+            domain_block_stepy: 8,
+            ..Default::default()
+        };
+
+        let img_u8 = open_gray_image("joli.bmp").unwrap();
+        let img = Array2::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.);
+
+        let (h, w) = img.clone().dim();
+        let size = (h, w);
+
+        // let (mut y, mut cr, mut cb) = rgb_to_y_cb_cr(img.clone());
+
+        // y = scale_down(&y, size);
+        // cr = scale_down(&cr, size);
+        // cb = scale_down(&cb, size);
+
+        // compress_grey(y, CompressionMethod::Naive(s), "y.map".into()).unwrap();
+        // compress_grey(cr, CompressionMethod::Naive(s), "cr.map".into()).unwrap();
+        // compress_grey(cb, CompressionMethod::Naive(s), "cb.map".into()).unwrap();
+        compress_grey(img, CompressionMethod::Naive(s), "compressed.map".into()).unwrap();
+        println!("compression ok");
+
+        // let comp_y = decompress_grey("y.map".into(), DecompressionMethod::Naive, 30).unwrap();
+        // let comp_cr = decompress_grey("cr.map".into(), DecompressionMethod::Naive, 30).unwrap();
+        // let comp_cb = decompress_grey("cb.map".into(), DecompressionMethod::Naive, 30).unwrap();
+        let dc = decompress_grey("compressed.map".into(), DecompressionMethod::Naive, 30).unwrap();
+
+        println!("decompression ok");
+
+        // let comp_img = y_cb_cr_to_rgb(comp_y, comp_cb, comp_cr);
+        let comp_img_u8 = Array2::from_shape_fn((size.0, size.1), |t| {
+            (dc[t] * 255.).clamp(0., 255.) as i32 as u8
+        });
+        save_gray_image("joli_decomp.png", comp_img_u8.view()).unwrap();
+    */
     Ok(())
 }

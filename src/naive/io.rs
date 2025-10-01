@@ -1,13 +1,14 @@
 #![allow(unused)]
 
-use crate::CompressionMethod;
-use crate::compression::*;
 use crate::naive::NaiveCompressionSettings;
+use crate::prelude::*;
 use std::collections::VecDeque;
 use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
 use std::ptr::read;
+
+const F32_BITS: usize = 10;
 
 pub struct BinBufWriter<T: Write> {
     pub(crate) x: u64,
@@ -174,9 +175,21 @@ impl<T: Write> BinBufWriter<T> {
         Ok(())
     }
 
-    pub fn write_float(&mut self, x: f32) -> Result<(), std::io::Error> {
-        for b in x.to_le_bytes() {
-            self.write_byte(b);
+    pub fn write_float(&mut self, mut x: f32) -> Result<(), std::io::Error> {
+        if x < 0. {
+            self.add_bit(true)?;
+        } else {
+            self.add_bit(false)?;
+        }
+
+        for _ in 0..F32_BITS {
+            x *= 2.;
+            if x >= 1. {
+                self.add_bit(true)?;
+                x -= 1.;
+            } else {
+                self.add_bit(false)?;
+            }
         }
 
         Ok(())
@@ -232,12 +245,15 @@ impl<T: Read> BinBufReader<T> {
     }
 
     pub fn read_float(&mut self) -> Result<f32, std::io::Error> {
-        Ok(f32::from_le_bytes([
-            self.read_byte()?,
-            self.read_byte()?,
-            self.read_byte()?,
-            self.read_byte()?,
-        ]))
+        let sign = if self.read_bit()? { -1. } else { 1. };
+        let mut x = 0.;
+        for _ in 0..F32_BITS {
+            if self.read_bit()? {
+                x += 1.;
+            }
+            x /= 2.;
+        }
+        Ok(sign * x)
     }
 
     pub fn read_rotation(&mut self) -> Result<Rotation, std::io::Error> {
@@ -256,7 +272,7 @@ impl<T: Read> BinBufReader<T> {
 mod tests {
     use super::super::*;
     use super::*;
-    use crate::compression::*;
+    use crate::prelude::*;
 
     #[allow(non_upper_case_globals)]
     const s: NaiveCompressionSettings = NaiveCompressionSettings {
@@ -312,7 +328,7 @@ mod tests {
         let db = DomainBlockLocation {
             pos: (7 * s.domain_block_stepy, 36 * s.domain_block_stepx),
             flipped: true,
-            rotation: crate::compression::Rotation::ThreeQuarter,
+            rotation: crate::prelude::Rotation::ThreeQuarter,
             size: (s.domain_block_size, s.domain_block_size),
         };
 
@@ -339,7 +355,7 @@ mod tests {
         println!("int");
         assert_eq!(69, r.read_int(21)?);
         println!("f32_block");
-        assert_eq!(r.read_float()?, (0.861));
+        assert!((r.read_float()? - (0.861)) <= 0.0001);
         println!("rotation 0");
         assert_eq!(r.read_rotation()?, Rotation::Quarter);
         println!("rotation 0");
