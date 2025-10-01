@@ -1,2 +1,0 @@
-use ndarray::*aaa;
-
