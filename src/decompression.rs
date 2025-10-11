@@ -1,5 +1,6 @@
 use super::prelude::*;
 
+// reconstruction naïve
 pub fn reconstruct(mappings: Mappings, mut img: Arr<f32>, n: usize) -> Arr<f32> {
     let mut new_img = img.clone();
     for _ in 0..n {

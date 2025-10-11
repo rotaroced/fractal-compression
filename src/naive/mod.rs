@@ -1,6 +1,6 @@
 pub mod io;
 
-mod compression;
+pub mod compression;
 
 use crate::prelude::*;
 use compression::find_mappings;

@@ -1,9 +1,10 @@
 mod color;
 mod decompression;
 mod naive;
-mod prelude;
+pub mod prelude;
 mod quadtree;
 mod smoothen;
+mod worst_case;
 
 use crate::decompression::reconstruct;
 use crate::quadtree::compress;
@@ -13,6 +14,7 @@ use color::*;
 use ndarray::*;
 use ndarray_image::*;
 pub use prelude::*;
+use std::time::{Duration, Instant};
 
 use crate::quadtree::QuadtreeSettings;
 use crate::quadtree::io::*;
@@ -74,6 +76,8 @@ fn decompress_grey(
     }
 }
 */
+
+#[cfg(not(find_worst))]
 fn main() -> Result<(), std::io::Error> {
     let s = QuadtreeSettings {
         max_distance: 0.01,
@@ -102,6 +106,7 @@ fn main() -> Result<(), std::io::Error> {
 
     println!("rms smooth: {}", distance(r.view(), img.view()));
     save_gray_image("lena_decompressed_qt.png", r_u82.view()).unwrap();
+
     /*let s_lumi = QuadtreeSettings {
             min_domain_variance: 0.002,
             min_range_variance: 0.000001,
@@ -159,4 +164,48 @@ fn main() -> Result<(), std::io::Error> {
         save_gray_image("joli_decomp.png", comp_img_u8.view()).unwrap();
     */
     Ok(())
+}
+
+#[cfg(find_worst)]
+pub fn main() -> () {
+    use core::time::Duration;
+
+    for i in 3..8 {
+        for divisions in 2..i {
+            let width = 1 << i;
+            println!("starting width = {width}, divisions = {divisions}");
+            let mut worst = (
+                Arr::<f32>::zeros((width, width)),
+                Arr::<f32>::zeros((width, width)),
+                0.,
+            );
+
+            worst = worst_case::rand_gen_worst(
+                width,
+                divisions,
+                Instant::now() + Duration::from_secs(60),
+                1.,
+                worst,
+            );
+
+            worst = worst_case::rand_gen_worst(
+                width,
+                divisions,
+                Instant::now() + Duration::from_secs(60),
+                0.5,
+                worst,
+            );
+
+            worst = worst_case::rand_gen_worst(
+                width,
+                divisions,
+                Instant::now() + Duration::from_secs(60),
+                0.1,
+                worst,
+            );
+            println!("{:?}", worst.0);
+            println!("{:?}", worst.1);
+            println!("({i}, {divisions}): {}", worst.2);
+        }
+    }
 }

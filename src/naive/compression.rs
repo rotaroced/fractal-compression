@@ -83,6 +83,18 @@ pub fn find_mappings(
         .collect::<Mappings>()
 }
 
+#[inline]
+pub fn find_mappings_noprogressbar(
+    img: &Arr<f32>,
+    range_blocks: &[RangeBlockLocation],
+    domain_blocks: &[DomainBlock],
+) -> Mappings {
+    range_blocks
+        .par_iter()
+        .map(|&rb| (rb, find_best_domain_block(img, rb, domain_blocks)))
+        .collect::<Mappings>()
+}
+
 impl PartialOrd for DomainBlockLocation {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(
