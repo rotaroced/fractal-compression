@@ -6,10 +6,12 @@ use std::collections::HashMap;
 
 use super::naive::{create_images, domain_blocks_from_locations};
 use super::prelude::*;
+use compression::create_rtree;
 use compression::*;
 use ndarray::{Array2, ArrayView2, s as sl};
 use ndarray_image::save_gray_image;
 use quadtree::*;
+use rayon::prelude::*;
 
 pub fn variance(img: ArrayView2<f32>) -> f32 {
     let m = img.mean().unwrap();
@@ -23,6 +25,10 @@ pub fn compress(
     img: &Array2<f32>,
     s: QuadtreeSettings,
 ) -> (Mappings, Quadtree<RangeBlockLocation>) {
+    let dbs_rtrees = (s.minimum_range_splits..=s.maximum_range_splits)
+        .map(|level| create_rtree(img.view(), level))
+        .collect::<Vec<_>>();
+
     let qt = compression::make_quadtree(
         img,
         RangeBlockLocation {
@@ -31,6 +37,7 @@ pub fn compress(
         },
         s,
         0,
+        &dbs_rtrees,
     );
 
     let mut m = HashMap::new();
@@ -70,4 +77,5 @@ pub struct QuadtreeSettings {
     pub max_distance: f32,
     pub minimum_range_splits: usize,
     pub maximum_range_splits: usize,
+    pub max_neighbors: usize,
 }

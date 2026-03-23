@@ -1,4 +1,6 @@
+use core::ops::{Add, Div};
 use ndarray::*;
+use num_traits::{FromPrimitive, Zero};
 use std::collections::HashMap;
 
 pub type Arr<A> = Array2<A>;
@@ -36,9 +38,12 @@ pub type Transformation = (DomainBlockLocation, f32, f32);
 
 pub type Mappings = HashMap<RangeBlockLocation, Transformation>;
 
-pub fn scale_down(img: &Arr<f32>, target_size: (usize, usize)) -> Arr<f32> {
+pub fn scale_down<T>(img: &Arr<T>, target_size: (usize, usize)) -> Arr<T>
+where
+    T: Clone + FromPrimitive + Add<Output = T> + Div<Output = T> + Zero,
+{
     // println!("{:?} -> {:?}", img.dim(), target_size);
-    let mut a = Arr::<f32>::zeros(target_size);
+    let mut a = Arr::<T>::zeros(target_size);
     for i in 0..target_size.0 {
         for j in 0..target_size.1 {
             let (x, y) = (

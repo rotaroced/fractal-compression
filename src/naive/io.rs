@@ -8,7 +8,7 @@ use std::io::Read;
 use std::io::Write;
 use std::ptr::read;
 
-const F32_BITS: usize = 10;
+pub const F32_BITS: usize = 15;
 
 pub struct BinBufWriter<T: Write> {
     pub(crate) x: u64,
@@ -127,12 +127,13 @@ impl<T: Write> BinBufWriter<T> {
         }
     }
 
+    #[inline]
     pub fn add_bit(&mut self, bit: bool) -> Result<(), std::io::Error> {
         self.x += (bit as u64) << self.n;
         self.n += 1;
         // println!("{}, {}", self.n, self.x);
-        if self.n >= 8 {
-            for _ in 0..=0 {
+        if self.n >= usize::BITS as usize - 8 {
+            while self.n >= 8 {
                 self.buf.write_all(&[(self.x % 256) as u8])?;
                 self.x >>= 8;
                 self.n -= 8;
@@ -168,7 +169,7 @@ impl<T: Write> BinBufWriter<T> {
         Ok(())
     }
     pub fn write_int(&mut self, n: usize, size: usize) -> Result<(), std::io::Error> {
-        debug_assert!(n < ((1 << size) - 1));
+        assert!(n < ((1 << size) - 1));
         for i in 0..size {
             self.add_bit((n >> i) & 1 == 1)?;
         }
@@ -176,11 +177,15 @@ impl<T: Write> BinBufWriter<T> {
     }
 
     pub fn write_float(&mut self, mut x: f32) -> Result<(), std::io::Error> {
+        assert!(x.abs() < 4.);
         if x < 0. {
             self.add_bit(true)?;
+            x *= -1.;
         } else {
             self.add_bit(false)?;
         }
+
+        x /= 4.;
 
         for _ in 0..F32_BITS {
             x *= 2.;
@@ -247,11 +252,13 @@ impl<T: Read> BinBufReader<T> {
     pub fn read_float(&mut self) -> Result<f32, std::io::Error> {
         let sign = if self.read_bit()? { -1. } else { 1. };
         let mut x = 0.;
+        let delta = 2. / ((2u32).pow(F32_BITS as u32)) as f32;
         for _ in 0..F32_BITS {
             if self.read_bit()? {
-                x += 1.;
+                x += delta;
             }
-            x /= 2.;
+            x *= 2.;
+            // println!("a {x:?}");
         }
         Ok(sign * x)
     }
@@ -270,6 +277,8 @@ impl<T: Read> BinBufReader<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::super::*;
     use super::*;
     use crate::prelude::*;
@@ -334,6 +343,8 @@ mod tests {
 
         w.write_int(69, 21)?;
         w.write_float(0.861)?;
+        w.write_float(-1.69)?;
+        w.write_float(3.42)?;
         w.write_rotation(Rotation::Quarter)?;
         w.write_rotation(Rotation::Zero)?;
         w.write_rotation(Rotation::ThreeQuarter)?;
@@ -355,7 +366,11 @@ mod tests {
         println!("int");
         assert_eq!(69, r.read_int(21)?);
         println!("f32_block");
-        assert!((r.read_float()? - (0.861)) <= 0.0001);
+        assert!((r.read_float()? - (0.861)).abs() <= 4. / 2u32.pow(F32_BITS as u32) as f32);
+        println!("f32_block bis");
+        assert!((r.read_float()? - (-1.69)).abs() <= 4. / 2u32.pow(F32_BITS as u32) as f32,);
+        println!("f32_block ter");
+        assert!((r.read_float()? - (3.42)).abs() <= 4. / 2u32.pow(F32_BITS as u32) as f32,);
         println!("rotation 0");
         assert_eq!(r.read_rotation()?, Rotation::Quarter);
         println!("rotation 0");

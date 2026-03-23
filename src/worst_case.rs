@@ -22,7 +22,7 @@ fn random_matrix(shape: (usize, usize)) -> Arr<f32> {
     })
 }
 
-fn construct(image: &Arr<f32>, rb: &[RangeBlockLocation], db: &[DomainBlock]) -> Arr<f32> {
+pub fn construct(image: &Arr<f32>, rb: &[RangeBlockLocation], db: &[DomainBlock]) -> Arr<f32> {
     let m = find_mappings_noprogressbar(image, rb, db);
     reconstruct(m, Arr::<f32>::zeros(image.dim()), 50)
 }
@@ -72,9 +72,9 @@ pub fn rand_gen_worst(
         }
     }
 
-    while Instant::now() <= max_time {
-        let candidate = clamp(worst.0.clone() + perturbation * random_matrix((width, width)));
+    let mut candidate = Arr::<f32>::from_shape_fn((width, width), |(i, j)| ((i + j) & 1) as f32);
 
+    while Instant::now() <= max_time {
         let view = candidate.view();
         let domain_blocks = domain_blocks_locations
             .iter()
@@ -92,6 +92,7 @@ pub fn rand_gen_worst(
         if d > worst.2 {
             worst = (candidate, best, d);
         }
+        candidate = clamp(worst.0.clone() + perturbation * random_matrix((width, width)));
     }
 
     worst

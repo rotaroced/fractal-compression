@@ -66,6 +66,13 @@ impl<T: Copy> Quadtree<T> {
             Right(&label) => Quadtree::leaf(f(label, rb)),
         }
     }
+
+    pub fn nb_leaves(&self) -> usize {
+        match self.children.as_ref() {
+            Right(_) => 1,
+            Left(b) => b[0].nb_leaves() + b[1].nb_leaves() + b[2].nb_leaves() + b[3].nb_leaves(),
+        }
+    }
 }
 
 impl Quadtree<RangeBlockLocation> {
