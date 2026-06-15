@@ -8,7 +8,8 @@ mod worst_case;
 
 pub use crate::decompression::reconstruct;
 pub use crate::decompression::reconstruct_smart;
-pub use crate::quadtree::QuadtreeSettings;
+pub use crate::naive;
+pub use crate::quadtree;
 pub use crate::{DomainBlock, DomainBlockLocation, Mappings, RangeBlockLocation, Rotation};
 pub use prelude::*;
 
