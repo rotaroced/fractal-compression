@@ -4,10 +4,10 @@ use ndarray_image::open_gray_image;
 use std::{fs::File, hint::black_box};
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let mut g = c.benchmark_group("lena");
+    let mut g = c.benchmark_group("img_test");
     g.sample_size(20);
 
-    let img_u8 = open_gray_image("lena.png").unwrap();
+    let img_u8 = open_gray_image("img_test.png").unwrap();
     let lena256 = scale_down(
         &ndarray::Array2::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.),
         (256, 256),
@@ -77,36 +77,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         &lena256,
         |b, i| b.iter(|| naive::compress(i, naive_params)),
     );
-
-    // g.bench_with_input(
-    //     BenchmarkId::new("naive (8x8 range blocks)", "lena512"),
-    //     &lena512,
-    //     |b, i| b.iter(|| naive::compress(i, naive_params)),
-    // );
-    //
-    // g.bench_with_input(
-    //     BenchmarkId::new(
-    //         format!(
-    //             "quadtree + rtree + maximum_range_splits = {}",
-    //             s512.maximum_range_splits
-    //         ),
-    //         "lena512",
-    //     ),
-    //     &lena512,
-    //     |b, i| b.iter(|| quadtree::compress(i, s)),
-    // );
-    //
-    // g.bench_with_input(
-    //     BenchmarkId::new(
-    //         format!(
-    //             "quadtree + rtree + always {:?} splits",
-    //             s2_512.maximum_range_splits
-    //         ),
-    //         "lena512",
-    //     ),
-    //     &lena512,
-    //     |b, i| b.iter(|| quadtree::compress(i, s2)),
-    // );
 }
 
 criterion_group!(benches, criterion_benchmark);
