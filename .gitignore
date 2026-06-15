@@ -1,6 +1,8 @@
 target/
 Cargo.lock
+
 src/main.rs
+
 *.jpg
 *.png
 *.bmp
