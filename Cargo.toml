@@ -3,6 +3,14 @@ name = "fractal-compression"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "fractal_compression"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fractal_compressor"
+path = "src/main.rs"
+
 [dependencies]
 dashmap = "6.1.0"
 either = "1.15.0"
@@ -15,3 +23,11 @@ rayon = "1.10.0"
 r-tree = { path = "../r-tree" }
 ordered-float = "5.1.0"
 num-traits = "0.2.19"
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+
+[[bench]]
+name = "compression"
+harness = false

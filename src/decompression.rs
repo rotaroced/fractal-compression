@@ -28,9 +28,9 @@ pub fn reconstruct(mappings: Mappings, mut img: Arr<f32>, n: usize) -> Arr<f32> 
     img
 }
 
-/// decompresses the image without cloning the image at each iteration
-/// TODO : Construct Mappings in a smarter way (quadtree ?) so there is no need to create the rbs
-/// vec
+/// TODO : Construct Mappings in a smarter way (quadtree ?) so there is no need to create `rbs`
+
+// decompresses the image without cloning the image at each iteration
 pub fn reconstruct_smart(mappings: &Mappings, mut img: Arr<f32>, delta: f32) -> Arr<f32> {
     let mut dist = f32::INFINITY;
 
@@ -43,6 +43,7 @@ pub fn reconstruct_smart(mappings: &Mappings, mut img: Arr<f32>, delta: f32) -> 
     for (&rb, m) in mappings {
         for i in 0..rb.size.0 {
             for j in 0..rb.size.1 {
+                assert_eq!(m.0.rotation, Rotation::Zero);
                 rbs[(i + rb.pos.0) * img.dim().1 + j + rb.pos.1] = (rb, m);
             }
         }
@@ -67,7 +68,7 @@ pub fn reconstruct_smart(mappings: &Mappings, mut img: Arr<f32>, delta: f32) -> 
             dist += (old_val - img[(i, j)]) * (old_val - img[(i, j)]);
         }
 
-        dist = dist.sqrt();
+        dist = dist.sqrt() / (rbs.len() as f32);
     }
 
     img

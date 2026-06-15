@@ -4,11 +4,9 @@ pub mod quadtree;
 
 use std::collections::HashMap;
 
-use super::naive::{create_images, domain_blocks_from_locations};
 use super::prelude::*;
 use compression::create_rtree;
-use compression::*;
-use ndarray::{Array2, ArrayView2, s as sl};
+use ndarray::{Array2, ArrayView2};
 use ndarray_image::save_gray_image;
 use quadtree::*;
 use rayon::prelude::*;

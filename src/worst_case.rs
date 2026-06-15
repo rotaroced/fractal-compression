@@ -1,14 +1,10 @@
-use core::{default::Default, time};
 use std::time::Instant;
 
-use super::naive::compression::find_mappings_noprogressbar;
+use super::naive::compression::find_mappings_parallel;
 use crate::{decompression::reconstruct, prelude::*};
 use ndarray::prelude::*;
 use rand::{
-    distr::{
-        StandardUniform,
-        uniform::{UniformFloat, UniformSampler},
-    },
+    distr::{StandardUniform, uniform::UniformSampler},
     prelude::*,
     rng,
 };
@@ -23,7 +19,7 @@ fn random_matrix(shape: (usize, usize)) -> Arr<f32> {
 }
 
 pub fn construct(image: &Arr<f32>, rb: &[RangeBlockLocation], db: &[DomainBlock]) -> Arr<f32> {
-    let m = find_mappings_noprogressbar(image, rb, db);
+    let m = find_mappings_parallel(image, rb, db);
     reconstruct(m, Arr::<f32>::zeros(image.dim()), 50)
 }
 

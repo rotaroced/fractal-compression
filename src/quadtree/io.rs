@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    process::exit,
 };
 
 use super::quadtree::*;
@@ -147,8 +146,8 @@ pub fn save_mappings<T: Write>(
         // println!("wrote {:?}, {:?}", rb, (db, c, b));
 
         // TODO : optimiser le nombre de bits utilisés pour stocker les transformations
-        writer.write_int(db.pos.0, 16)?;
-        writer.write_int(db.pos.1, 16)?;
+        writer.write_int(db.pos.0 / 8, 7)?;
+        writer.write_int(db.pos.1 / 8, 7)?;
         // writer.write_rotation(db.rotation)?;
         // writer.add_bit(db.flipped)?;
         writer.write_float(c)?;
@@ -184,8 +183,8 @@ pub fn load_mappings<T: Read>(
     let mut mappings = HashMap::new();
 
     for rb in range_blocks_qt.prefix_leaves() {
-        let dbx = reader.read_int(16)?;
-        let dby = reader.read_int(16)?;
+        let dbx = reader.read_int(7)? * 8;
+        let dby = reader.read_int(7)? * 8;
         // let rotation = reader.read_rotation()?;
         // let flipped = reader.read_bit()?;
         let rotation = Rotation::Zero;
@@ -228,11 +227,6 @@ pub fn load_mappings<T: Read>(
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{VecDeque, vec_deque},
-        io::BufWriter,
-    };
-
     use crate::quadtree::{QuadtreeSettings, compress};
 
     use super::*;

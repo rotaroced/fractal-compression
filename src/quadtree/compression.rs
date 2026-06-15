@@ -1,16 +1,12 @@
-use super::variance;
 use crate::{
-    MAX_COEF, N_DIMS_SQRT,
+    MAX_COEF, N_DIMS, N_DIMS_SQRT,
     prelude::*,
     quadtree::{QuadtreeSettings, quadtree::Quadtree},
 };
-use core::num;
-use indicatif::{ParallelProgressIterator, ProgressFinish, ProgressStyle};
 use ndarray::prelude::*;
 use ordered_float::NotNan;
 use r_tree::RTree;
-use rayon::prelude::*;
-use std::{f32::INFINITY, ops::Deref, rc::Rc};
+use std::ops::Deref;
 
 /// calcul de la luminosité et du contraste optimaux (avec la méthode des moindres carrés)
 pub fn find_brightness_and_contrast(
@@ -42,50 +38,6 @@ pub fn find_brightness_and_contrast(
 
     (contrast, brightness)
 }
-fn find_best_domain_block(img: &Arr<f32>, rb: RangeBlockLocation) -> (Transformation, f32) {
-    let mut best_block = (DomainBlockLocation::default(), 0., 0.);
-    let mut best_dist = f32::INFINITY;
-    let range_block = get_rangeblock(img, rb);
-
-    for i in 0..(img.nrows() / rb.size.0 / 2) {
-        for j in 0..(img.ncols() / rb.size.1 / 2) {
-            let db = DomainBlockLocation {
-                flipped: false,
-                rotation: Rotation::Zero,
-                size: (rb.size.0 * 2, rb.size.1 * 2),
-                pos: (i * rb.size.0 * 2, j * rb.size.1 * 2),
-            };
-            let arr = get_domainblock(img, db);
-            if arr.dim().0 > rb.size.0
-                && arr.dim().1 > rb.size.1
-                && arr.dim().0 <= 2 * rb.size.0
-                && arr.dim().1 <= 2 * rb.size.1
-            {
-                let domain_block = scale_down(&arr.to_owned(), rb.size);
-                let (c, b) = find_brightness_and_contrast(range_block, &domain_block.view());
-                let d = distance(range_block, (domain_block.clone() * c + b).view());
-
-                // println!(
-                //     "{:?}, {i}, {j}, {}, c={}, b={}, \n{}\n{}\n{}\n\n",
-                //     db,
-                //     d,
-                //     c,
-                //     b,
-                //     range_block,
-                //     domain_block.clone(),
-                //     domain_block * c + b
-                // );
-                //
-                if d < best_dist {
-                    best_block = (db, c, b);
-                    best_dist = d;
-                }
-            }
-        }
-    }
-
-    (best_block, best_dist)
-}
 
 pub fn tl(b: RangeBlockLocation) -> RangeBlockLocation {
     RangeBlockLocation {
@@ -112,18 +64,15 @@ pub fn br(b: RangeBlockLocation) -> RangeBlockLocation {
     }
 }
 
-pub fn key(img: Array2<f64>) -> Vec<f64> {
+pub fn key(img: Array2<f32>) -> Option<[f64; N_DIMS]> {
     assert_eq!(img.dim().0, img.dim().1);
     if img.dim().0 >= N_DIMS_SQRT {
-        scale_down(&img, (N_DIMS_SQRT, N_DIMS_SQRT)).into_raw_vec()
+        normalize(scale_down(&img, (N_DIMS_SQRT, N_DIMS_SQRT)).view())
     } else {
-        let mut v = img.into_raw_vec();
+        let mut v = [0.; N_DIMS];
+        let _ = img.iter().enumerate().map(|(i, &x)| v[i] = x as f64);
 
-        while v.len() < N_DIMS_SQRT * N_DIMS_SQRT {
-            v.push(0.0);
-        }
-
-        v
+        Some(v)
     }
 }
 
@@ -133,9 +82,8 @@ pub fn make_quadtree(
     range_block: RangeBlockLocation,
     s: QuadtreeSettings,
     level: usize,
-    domainblocks_rtree: &Vec<RTree<usize, 16>>,
+    domainblocks_rtree: &Vec<RTree<usize, 16, 4>>,
 ) -> Quadtree<Transformation> {
-    println!("{:?}", range_block);
     debug_assert_eq!(img.nrows() % (1 << s.maximum_range_splits), 0);
     debug_assert_eq!(img.ncols() % (1 << s.maximum_range_splits), 0);
 
@@ -148,11 +96,10 @@ pub fn make_quadtree(
         );
     }
 
-    let rb_vec = get_rangeblock(img, range_block).iter().collect::<Vec<_>>();
+    let _rb_vec = get_rangeblock(img, range_block).iter().collect::<Vec<_>>();
 
-    let normalized = normalize(get_rangeblock(img, range_block));
+    let normalized = key(get_rangeblock(img, range_block).to_owned());
 
-    // TODO : make it so there is no panic if `domainblocks_rtree` is empty.
     let closest = if let Some(n) = &normalized {
         domainblocks_rtree[level - s.minimum_range_splits - 1].k_closest(n, s.max_neighbors)
     } else {
@@ -189,12 +136,17 @@ pub fn make_quadtree(
             ((db, c, b), d)
         })
         .min_by_key(|(_, d)| *d)
-        .unwrap_or((Default::default(), NotNan::try_from(f32::INFINITY).unwrap()));
-
-    // println!(
-    //     "{dist:?} {dist_const:?}, actual best dist = {}",
-    //     find_best_domain_block(img, range_block).1
-    // );
+        .unwrap_or((
+            (
+                DomainBlockLocation {
+                    size: (2 * range_block.size.0, 2 * range_block.size.1),
+                    ..Default::default()
+                },
+                0.,
+                0.,
+            ),
+            NotNan::try_from(f32::INFINITY).unwrap(),
+        ));
 
     if dist.into_inner() > s.max_distance
         && dist_const > s.max_distance
@@ -207,10 +159,8 @@ pub fn make_quadtree(
             make_quadtree(img, br(range_block), s, level + 1, domainblocks_rtree),
         )
     } else if dist_const > dist.into_inner() {
-        // println!("choosing other");
         Quadtree::leaf(t)
     } else {
-        // println!("choosing constant");
         Quadtree::leaf((
             t.0,
             0.,
@@ -220,8 +170,8 @@ pub fn make_quadtree(
     }
 }
 
-fn normalize(block: ArrayView2<f32>) -> Option<Vec<f64>> {
-    let b = block;
+fn normalize(b: ArrayView2<f32>) -> Option<[f64; N_DIMS]> {
+    assert_eq!(b.nrows() * b.ncols(), N_DIMS);
     let avg = b.sum() / (b.dim().0 * b.dim().1) as f32;
     let sign: f32 = b.iter().fold(None, |o, &x| {
         o.or(if x > avg {
@@ -235,20 +185,21 @@ fn normalize(block: ArrayView2<f32>) -> Option<Vec<f64>> {
 
     let v =
         ((b.to_owned() - avg) * (b.to_owned() - avg)).sum() / (b.dim().0 * b.dim().1) as f32 * 500.;
-    let normalized = b.map(|x| (sign * (x - avg) / v.sqrt()) as f64);
+    let mut normalized = [0.; N_DIMS];
 
+    let _ = b
+        .iter()
+        .enumerate()
+        .map(|(i, x)| normalized[i] = (sign * (x - avg) / v.sqrt()) as f64);
     if normalized.iter().any(|x| x.is_nan()) {
         None
     } else {
-        Some(key(normalized))
+        Some(normalized)
     }
 }
 
-pub(super) fn create_rtree(img: ArrayView2<f32>, level: usize) -> RTree<usize, 16> {
-    println!(
-        "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB {:?}",
-        level
-    );
+// Crée l'arbre r* qui contient les blocs sources normalisés
+pub(super) fn create_rtree(img: ArrayView2<f32>, level: usize) -> RTree<usize, 16, N_DIMS> {
     assert_eq!(img.dim().0 % (1 << (level + 1)), 0);
     assert_eq!(img.dim().1 % (1 << (level + 1)), 0);
 
@@ -256,22 +207,13 @@ pub(super) fn create_rtree(img: ArrayView2<f32>, level: usize) -> RTree<usize, 1
     let n = img.dim().0 / number;
     let m = img.dim().1 / number;
 
-    let mut t = RTree::<usize, 16>::new(n * m);
+    let mut t = RTree::<usize, 16, N_DIMS>::default();
 
     for i in 0..number {
         for j in 0..number {
-            println!("{:?}", (i, j));
             let domain_block = img.slice(s![(i * n)..((i + 1) * n), (j * m)..((j + 1) * m)]);
-            println!("{:?}", (i, j));
-            // println!(
-            //     "{:?}\n",
-            //     normalize(scale_down(&domain_block.to_owned(), (n / 2, m / 2)).view())
-            // );
-            if let Some(p) = &normalize(scale_down(&domain_block.to_owned(), (n / 2, m / 2)).view())
-            {
-                println!("{:?}", (i, j));
+            if let Some(p) = &key(domain_block.to_owned()) {
                 t.insert(p, i * number + j);
-                println!("{:?}", (i, j));
             }
         }
     }

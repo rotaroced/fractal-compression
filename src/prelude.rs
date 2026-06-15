@@ -72,7 +72,7 @@ pub fn distance(img1: ArrayView2<f32>, img2: ArrayView2<f32>) -> f32 {
         .sqrt()
 }
 
-pub fn get_rangeblock(img: &Arr<f32>, range_block: RangeBlockLocation) -> ArrayView2<f32> {
+pub fn get_rangeblock(img: &Arr<f32>, range_block: RangeBlockLocation) -> ArrayView2<'_, f32> {
     // println!(
     //     "{}..{} , {}..{}",
     //     block.pos.0,
@@ -88,7 +88,7 @@ pub fn get_rangeblock(img: &Arr<f32>, range_block: RangeBlockLocation) -> ArrayV
 }
 
 #[inline]
-pub fn get_domainblock(img: &Arr<f32>, domain_block: DomainBlockLocation) -> ArrayView2<f32> {
+pub fn get_domainblock(img: &Arr<f32>, domain_block: DomainBlockLocation) -> ArrayView2<'_, f32> {
     get_rangeblock(
         img,
         RangeBlockLocation {

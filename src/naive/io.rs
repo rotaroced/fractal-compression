@@ -8,8 +8,9 @@ use std::io::Read;
 use std::io::Write;
 use std::ptr::read;
 
-pub const F32_BITS: usize = 15;
+pub const F32_BITS: usize = 10;
 
+// structures that allow to write/read to a buffer bit by bit
 pub struct BinBufWriter<T: Write> {
     pub(crate) x: u64,
     pub(crate) n: usize,
@@ -39,7 +40,7 @@ pub fn save_mappings(
     writer.write_int(s.domain_block_stepx, 32)?;
     writer.write_int(s.domain_block_stepy, 32)?;
     let q = std::cmp::max(h, w);
-    s.coord_bits = q.ilog2() as usize + 1;
+    s.coord_bits = q.ilog2() as usize + 2;
     writer.write_int(s.coord_bits, 15)?;
 
     // writes the size of the image
@@ -104,7 +105,7 @@ pub fn load_mappings(
                         size: (s.domain_block_size, s.domain_block_size),
                         flipped,
                         rotation,
-                        pos: (py, px),
+                        pos: (py * s.domain_block_stepy, px * s.domain_block_stepx),
                     },
                     c,
                     b,

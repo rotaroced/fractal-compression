@@ -1,8 +1,6 @@
 use core::f32;
-use std::collections::HashMap;
 
 use crate::prelude::*;
-use indicatif::{ParallelProgressIterator, ProgressFinish, ProgressStyle};
 use ndarray::*;
 use rayon::{
     self,
@@ -11,7 +9,8 @@ use rayon::{
 
 use crate::quadtree::variance;
 pub type Arr<A> = Array2<A>;
-/// calcul de la luminosité et du contraste optimaux (avec la méthode des moindres carrés)
+
+/// calcul de la luminosité et du contraste optimaux (régression linéaire pour la norme 2)
 pub fn find_brightness_and_contrast(
     range_block: ArrayView2<f32>,
     domain_block: &Arr<f32>,
@@ -35,6 +34,7 @@ pub fn find_brightness_and_contrast(
     (contrast, brightness)
 }
 
+// Trouve la meilleure transformation associée à un bloc destination
 fn find_best_domain_block(
     img: &Arr<f32>,
     rb: RangeBlockLocation,
@@ -45,7 +45,6 @@ fn find_best_domain_block(
     let range_block = get_rangeblock(img, rb);
 
     for &db in dbs {
-        // println!("{:?} {:?}", db.arr, rb);
         if db.arr.dim().0 > rb.size.0
             && db.arr.dim().1 > rb.size.1
             && db.arr.dim().0 <= 4 * rb.size.0
@@ -71,20 +70,13 @@ pub fn find_mappings(
     domain_blocks: &[DomainBlock],
 ) -> Mappings {
     range_blocks
-        .par_iter()
-        .progress_count(range_blocks.len() as u64)
-        .with_style(
-            ProgressStyle::default_bar()
-                .template("{bar:150} {pos:>7}/{len:<7} = {percent_precise}% ({eta} remaining, {duration} in total)")
-                .unwrap(),
-        )
-        .with_finish(ProgressFinish::AndLeave)
+        .iter()
         .map(|&rb| (rb, find_best_domain_block(img, rb, domain_blocks)))
         .collect::<Mappings>()
 }
 
 #[inline]
-pub fn find_mappings_noprogressbar(
+pub fn find_mappings_parallel(
     img: &Arr<f32>,
     range_blocks: &[RangeBlockLocation],
     domain_blocks: &[DomainBlock],
