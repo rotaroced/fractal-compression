@@ -4,7 +4,6 @@ pub mod naive;
 pub mod prelude;
 pub mod quadtree;
 pub mod smoothen;
-mod worst_case;
 
 pub use crate::decompression::reconstruct;
 pub use crate::decompression::reconstruct_smart;
