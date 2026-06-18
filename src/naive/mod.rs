@@ -2,10 +2,56 @@ pub mod io;
 
 pub mod compression;
 
-use crate::{naive::compression::find_mappings_parallel, prelude::*};
+use crate::{
+    naive::compression::find_mappings, naive::compression::find_mappings_parallel, prelude::*,
+};
 use ndarray::prelude::*;
 
 pub fn compress(img: &Arr<f32>, params: NaiveCompressionSettings) -> Mappings {
+    assert!(params.domain_block_size > params.range_block_size && params.range_block_size > 0);
+    assert_eq!(img.dim().0 % params.range_block_size, 0);
+    assert_eq!(img.dim().1 % params.range_block_size, 0);
+
+    let mut range_blocks = vec![];
+
+    for i in 0..(img.dim().0 / params.range_block_size) {
+        for j in 0..(img.dim().1 / params.range_block_size) {
+            range_blocks.push(RangeBlockLocation {
+                pos: (i * params.range_block_size, j * params.range_block_size),
+                size: (params.range_block_size, params.range_block_size),
+            });
+        }
+    }
+
+    let mut domain_blocks_locations = Vec::with_capacity(
+        (img.dim().0 - params.domain_block_size) * (img.dim().1 - params.domain_block_size)
+            / params.domain_block_stepy
+            / params.domain_block_stepx,
+    );
+    for i in (0..(img.dim().0 - params.domain_block_size)).step_by(params.domain_block_stepy) {
+        for j in (0..(img.dim().1 - params.domain_block_size)).step_by(params.domain_block_stepx) {
+            domain_blocks_locations.push(DomainBlockLocation {
+                pos: (i, j),
+                rotation: Rotation::Zero,
+                flipped: false,
+                size: (params.domain_block_size, params.domain_block_size),
+            });
+        }
+    }
+    let imgs = create_images(img);
+    let views = [
+        imgs[0].view(),
+        imgs[1].view(),
+        imgs[2].view(),
+        imgs[3].view(),
+    ];
+
+    let domain_blocks = domain_blocks_from_locations(&views, &domain_blocks_locations);
+
+    find_mappings(img, &range_blocks, &domain_blocks)
+}
+
+pub fn compress_parallel(img: &Arr<f32>, params: NaiveCompressionSettings) -> Mappings {
     assert!(params.domain_block_size > params.range_block_size && params.range_block_size > 0);
     assert_eq!(img.dim().0 % params.range_block_size, 0);
     assert_eq!(img.dim().1 % params.range_block_size, 0);
