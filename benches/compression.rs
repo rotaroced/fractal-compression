@@ -1,18 +1,20 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use fractal_compression::*;
-use ndarray_image::open_gray_image;
+use ndarray::Array2;
+
 use std::{fs::File, hint::black_box};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut g = c.benchmark_group("img_test");
     g.sample_size(20);
 
-    let img_u8 = open_gray_image("img_test.png").unwrap();
+    // let img_u8 = open_gray_image("img_test.png").unwrap();
+    let img_u8 = Array2::from_shape_fn((512, 512), |_| rand::random::<u8>());
     let lena256 = scale_down(
         &ndarray::Array2::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.),
         (256, 256),
     );
-    let lena512 = ndarray::Array2::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.);
+    // let lena512 = ndarray::Array2::from_shape_fn(img_u8.dim(), |t| img_u8[t] as f32 / 255.);
 
     let s = quadtree::QuadtreeSettings {
         max_distance: 0.01,
