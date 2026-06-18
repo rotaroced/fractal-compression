@@ -10,12 +10,12 @@ path = "src/lib.rs"
 [dependencies]
 dashmap = "6.1.0"
 either = "1.15.0"
-image = "=0.23.14"
+image = "0.25.10"
 indicatif = { version = "0.18.0", features = ["rayon"] }
-ndarray = "=0.14.0"
+ndarray = ">=0.17.2"
 # ndarray-image = "0.3.0"
-rand = "0.9.1"
-rayon = "1.10.0"
+rand = ">=0.10.1"
+rayon = ">=1.10.0"
 r-tree = { git = "https://github.com/rotaroced/Rstar-tree.git" }
 ordered-float = "5.1.0"
 num-traits = "0.2.19"
